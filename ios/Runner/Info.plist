@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>ar</string>
+	<!-- Arabic only: system UI (permission prompts, share sheets, the
+	     App Store listing's language) follows this. -->
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>ar</string>
+	</array>
+	<key>CFBundleDisplayName</key>
+	<string>منصة أونلاين</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>منصة أونلاين</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<!-- image_picker: profile photo, picked from the photo library. -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>يحتاج التطبيق إلى الوصول لمكتبة الصور لاختيار صورة الملف الشخصي</string>
+	<!-- image_picker's iOS binary links the camera and video-capture APIs
+	     even though the app only picks from the gallery; App Store Connect
+	     rejects the build (ITMS-90683) if these strings are missing. -->
+	<key>NSCameraUsageDescription</key>
+	<string>يحتاج التطبيق للكاميرا لتصوير صورة الملف الشخصي</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>يحتاج التطبيق للميكروفون عند تسجيل فيديو من الكاميرا</string>
+	<!-- Only standard HTTPS/TLS (plus AES for protecting the app's own
+	     downloaded lessons) — exempt from export-compliance documentation. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<!-- No exceptions — the backend is HTTPS-only (see ApiEndpoints.baseUrl),
+	     so ATS's secure-by-default behavior is kept as-is rather than
+	     opened up with NSAllowsArbitraryLoads or a per-domain exception. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+		<!-- Offline lessons are served from a loopback server
+		     (LocalRangeServer on 127.0.0.1). -->
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<!-- firebase_messaging: lets a push wake the app to update local state
+	     (see NotificationService's background handler) instead of only
+	     showing a tray notification. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
+</dict>
+</plist>

@@ -1,0 +1,297 @@
+import 'dart:convert';
+
+import 'package:itaaleem/app/router/app_router.dart';
+import 'package:itaaleem/core/device/device_identity_service.dart';
+import 'package:itaaleem/core/network/api_endpoints.dart';
+import 'package:itaaleem/core/network/dio_client.dart';
+import 'package:dio/dio.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+/// The interactive half of push notifications — permission + token
+/// registration, foreground display, and tap-to-navigate. Firebase itself
+/// (`Firebase.initializeApp()`) and the background-message handler are
+/// bootstrapped earlier, in `NotificationService.bootstrap()` (called from
+/// `main()` before this service is ever touched), since those must be set
+/// up unconditionally at process start — before it's even known whether
+/// this is a demo session.
+///
+/// ⚠️ Needs a Firebase project: drop `google-services.json` into
+/// `android/app/` and `GoogleService-Info.plist` into `ios/Runner/` (get
+/// both from the Firebase console for this app's Android/iOS bundle ids —
+/// `com.itaaleem.app`). Every method here is guarded by [isConfigured], so
+/// the app runs identically with neither file present — push notifications
+/// just silently never register.
+class FcmService {
+  FcmService(this._dio, this._deviceIdentityService);
+
+  final Dio _dio;
+  final DeviceIdentityService _deviceIdentityService;
+
+  final _localNotifications = FlutterLocalNotificationsPlugin();
+
+  static const _androidChannel = AndroidNotificationChannel(
+    'fcm_default_channel',
+    'إشعارات عامة',
+    description: 'إشعارات المحاضرات والامتحانات والإعلانات',
+    importance: Importance.high,
+  );
+
+  /// Whether `Firebase.initializeApp()` (in `NotificationService.bootstrap`)
+  /// succeeded — see that class's doc for why this is checked live instead
+  /// of cached.
+  static bool get isConfigured => Firebase.apps.isNotEmpty;
+
+  bool _permissionAsked = false;
+  bool _listenersReady = false;
+
+  /// The signed-in (non-demo) student this device's token belongs to, and the
+  /// `studentId:token` pair last accepted by the backend — a token is only
+  /// re-sent when either changes (or a previous attempt failed), so the
+  /// repeated calls from `App`'s auth listener cost nothing.
+  int? _studentId;
+  String? _registeredKey;
+
+  /// A tapped push that launched the app from fully terminated. Held until a
+  /// session exists ([flushPendingNavigation]) — navigating during the splash
+  /// / login redirect would just be discarded.
+  ({Object? type, Object? id})? _pendingNavigation;
+
+  /// Asks for notification permission once (Android 13+ `POST_NOTIFICATIONS`,
+  /// iOS), then registers this device's FCM token for [studentId] with the
+  /// backend and keeps it fresh via [FirebaseMessaging.onTokenRefresh].
+  /// Safe to call repeatedly (login, session restore, profile refreshes): the
+  /// permission prompt and refresh listener are set up once, and the token is
+  /// re-sent only when it or the student changed or the last attempt failed.
+  /// No-ops entirely if Firebase isn't configured.
+  Future<void> init([int? studentId]) async {
+    if (kDebugMode) {
+      debugPrint('>>> FCM init: configured=$isConfigured student=$studentId');
+    }
+    if (!isConfigured) return;
+    if (studentId != null) _studentId = studentId;
+
+    if (!_permissionAsked) {
+      _permissionAsked = true;
+      try {
+        final settings = await FirebaseMessaging.instance.requestPermission(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+        if (kDebugMode) {
+          debugPrint('>>> FCM permission: ${settings.authorizationStatus}');
+        }
+      } catch (e) {
+        if (kDebugMode) debugPrint('[FcmService] requestPermission failed: $e');
+      }
+      FirebaseMessaging.instance.onTokenRefresh.listen(_registerToken);
+    }
+
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (kDebugMode) {
+        debugPrint('>>> FCM TOKEN: $token');
+      }
+      if (token != null) await _registerToken(token);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('>>> FCM getToken failed: $e');
+      }
+    }
+  }
+
+  Future<void> _registerToken(String token) async {
+    final studentId = _studentId;
+    // Signed out (e.g. the refresh fired right after logout): the request would
+    // just 401 — the next login sends the token inline and via init().
+    if (studentId == null) return;
+    final key = '$studentId:$token';
+    if (key == _registeredKey) return;
+    try {
+      // Both keys: `/login` already takes `fcm_token`, this endpoint `token`.
+      // Same `device_id` as `/login`, so the backend ties the token to this device.
+      final device = await _deviceIdentityService.getIdentity();
+      final response = await _dio.post<dynamic>(
+        ApiEndpoints.fcmToken,
+        data: {
+          'token': token,
+          'fcm_token': token,
+          'device_id': device.deviceId,
+        },
+      );
+      _registeredKey = key;
+      if (kDebugMode) {
+        debugPrint('>>> FCM TOKEN sent to server: ${response.statusCode}');
+      }
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+          '>>> FCM TOKEN sent to server FAILED: '
+          '${e.response?.statusCode} ${e.response?.data ?? e.message}',
+        );
+      }
+    } catch (e) {
+      // Best-effort — a failed registration is retried by the next init()
+      // (login / session restore / auth state change) or token refresh; never
+      // worth surfacing to the student.
+      if (kDebugMode) debugPrint('[FcmService] POST /fcm-token failed: $e');
+    }
+  }
+
+  /// Opens the screen for a push that launched the app, once a session exists.
+  void flushPendingNavigation() {
+    final pending = _pendingNavigation;
+    if (pending == null) return;
+    _pendingNavigation = null;
+    // After the router has settled on the home shell.
+    Future<void>.delayed(
+      const Duration(milliseconds: 600),
+      () => _navigateForType(pending.type, pending.id),
+    );
+  }
+
+  /// Sets up the local-notification plugin plus every FCM message listener:
+  /// [FirebaseMessaging.onMessage] (shown as a native local notification —
+  /// FCM never puts one up itself while the app is foregrounded) and
+  /// [FirebaseMessaging.onMessageOpenedApp] / a tapped local notification
+  /// (both navigate via [_navigateForType]). Safe to call on every `App`
+  /// rebuild — internally idempotent, and a no-op without Firebase
+  /// configured.
+  Future<void> setupListeners() async {
+    if (!isConfigured || _listenersReady) return;
+    _listenersReady = true;
+
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const iosInit = DarwinInitializationSettings();
+    await _localNotifications.initialize(
+      settings: const InitializationSettings(
+        android: androidInit,
+        iOS: iosInit,
+      ),
+      onDidReceiveNotificationResponse: (response) {
+        _navigateForPayload(response.payload);
+      },
+    );
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.createNotificationChannel(_androidChannel);
+
+    FirebaseMessaging.onMessage.listen((message) {
+      if (kDebugMode) {
+        debugPrint(
+          '>>> FCM onMessage: title=${message.notification?.title}, body=${message.notification?.body}',
+        );
+      }
+      _showLocalNotification(message);
+    });
+    if (kDebugMode) {
+      debugPrint('>>> FCM listeners registered');
+    }
+    FirebaseMessaging.onMessageOpenedApp.listen(
+      (message) =>
+          _navigateForType(message.data['type'], _targetId(message.data)),
+    );
+    // A push that launched the app from fully terminated never fires
+    // onMessageOpenedApp (the app wasn't running yet to listen) — this is
+    // the one-time equivalent for that case.
+    final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMessage != null) {
+      _pendingNavigation = (
+        type: initialMessage.data['type'],
+        id: _targetId(initialMessage.data),
+      );
+      // The session may already be up by the time this resolves.
+      if (_studentId != null) flushPendingNavigation();
+    }
+  }
+
+  Future<void> _showLocalNotification(RemoteMessage message) async {
+    final notification = message.notification;
+    final title = notification?.title ?? message.data['title'] as String?;
+    final body = notification?.body ?? message.data['body'] as String?;
+    if (title == null || title.isEmpty) return;
+
+    await _localNotifications.show(
+      id: message.hashCode,
+      title: title,
+      body: body,
+      notificationDetails: NotificationDetails(
+        android: AndroidNotificationDetails(
+          _androidChannel.id,
+          _androidChannel.name,
+          channelDescription: _androidChannel.description,
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: const DarwinNotificationDetails(),
+      ),
+      payload: jsonEncode(message.data),
+    );
+  }
+
+  void _navigateForPayload(String? payload) {
+    if (payload == null || payload.isEmpty) return;
+    try {
+      final data = jsonDecode(payload) as Map<String, dynamic>;
+      _navigateForType(data['type'], _targetId(data));
+    } catch (e) {
+      if (kDebugMode) debugPrint('[FcmService] bad notification payload: $e');
+    }
+  }
+
+  static Object? _targetId(Map<String, dynamic> data) =>
+      data['id'] ??
+      data['lecture_id'] ??
+      data['exam_id'] ??
+      data['assignment_id'] ??
+      data['target_id'];
+
+  /// Routes a tapped push to the right screen: a lecture opens the internal
+  /// video player, an exam opens its details/attempt screen, anything else
+  /// (or a type/id the app doesn't recognize) falls back to "الإشعارات" —
+  /// per the spec's "type = lecture → video player, exam → exams screen".
+  void _navigateForType(Object? type, Object? id) {
+    final context = rootNavigatorKey.currentContext;
+    if (context == null) return;
+    final parsedId = id is num
+        ? id.toInt()
+        : int.tryParse(id?.toString() ?? '');
+
+    switch (type) {
+      case 'lecture' when parsedId != null:
+        context.push('/lectures/$parsedId');
+      case 'exam' when parsedId != null:
+        context.push('/exams/$parsedId');
+      default:
+        context.go(notificationsPath);
+    }
+  }
+
+  /// Unregisters this device from FCM and forgets its local token — called
+  /// on logout (see `AuthController`) so a signed-out device stops
+  /// receiving another student's pushes on a shared device.
+  Future<void> deleteLocalToken() async {
+    _studentId = null;
+    _registeredKey = null;
+    if (!isConfigured) return;
+    try {
+      await FirebaseMessaging.instance.deleteToken();
+    } catch (e) {
+      if (kDebugMode) debugPrint('[FcmService] deleteToken failed: $e');
+    }
+  }
+}
+
+final fcmServiceProvider = Provider<FcmService>((ref) {
+  return FcmService(
+    ref.watch(dioClientProvider),
+    ref.watch(deviceIdentityServiceProvider),
+  );
+});

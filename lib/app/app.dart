@@ -1,0 +1,153 @@
+import 'package:itaaleem/app/router/app_router.dart';
+import 'package:itaaleem/core/theme/dynamic_theme.dart';
+import 'package:itaaleem/features/center/presentation/providers/branding_provider.dart';
+import 'package:itaaleem/core/localization/generated/app_localizations.dart';
+import 'package:itaaleem/core/network/auth_events.dart';
+import 'package:itaaleem/core/network/connectivity_provider.dart';
+import 'package:itaaleem/core/services/fcm_service.dart';
+import 'package:itaaleem/core/widgets/capture_guard.dart';
+import 'package:itaaleem/core/widgets/no_connection_screen.dart';
+import 'package:itaaleem/features/auth/presentation/providers/auth_controller.dart';
+import 'package:itaaleem/features/settings/presentation/providers/theme_mode_provider.dart';
+import 'package:itaaleem/features/video/data/offline/offline_license_checker.dart';
+import 'package:itaaleem/features/video/data/offline/offline_progress_sync_service.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+class App extends ConsumerWidget {
+  const App({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final router = ref.watch(appRouterProvider);
+    final themeMode = ref.watch(themeModeProvider);
+    final primary = ref.watch(brandingProvider.select((b) => b.primary));
+
+    // FCM message listeners (foreground local notification, tap-to-navigate)
+    // are set up exactly once regardless of auth state — `setupListeners` is
+    // internally idempotent, so calling it on every rebuild is harmless.
+    ref.read(fcmServiceProvider).setupListeners();
+
+    // Keeps the offline-progress sync service alive (it listens to
+    // connectivity and uploads pending progress whenever the network returns).
+    ref.watch(offlineProgressSyncServiceProvider);
+
+    // Once per app launch, right after the session restores (`GET
+    // /profile` — see AuthController.build): re-validates offline downloads
+    // against the student's real enrollment and flushes any progress
+    // recorded while playing offline, and (a real, non-demo session only)
+    // registers this device for push notifications — both `runOnceForSession`
+    // and `FcmService.init()` are no-ops on a repeat call, so this covers
+    // both "just logged in" and "app started already logged in" with the
+    // same listener.
+    ref.listen(authControllerProvider, (previous, next) {
+      final student = next.valueOrNull;
+      if (student != null) {
+        ref.read(offlineLicenseCheckerProvider).runOnceForSession(student);
+        if (!student.isDemo) {
+          final fcm = ref.read(fcmServiceProvider);
+          fcm.init(student.id);
+          fcm.flushPendingNavigation();
+        }
+      }
+    });
+
+    // A 401 from any authenticated endpoint besides login/register/the
+    // startup session restore (see `ErrorMappingInterceptor`) means an
+    // established session's token was rejected mid-use — force the student
+    // back to `/login` rather than leaving every screen stuck on a
+    // "غير مصرح" error forever.
+    ref.listen(unauthorizedStreamProvider, (previous, next) {
+      if (next.hasValue) {
+        ref.read(authControllerProvider.notifier).forceLogout();
+      }
+    });
+
+    return MaterialApp.router(
+      title: 'منصة أونلاين',
+      debugShowCheckedModeBanner: false,
+      theme: DynamicTheme.light(primary),
+      darkTheme: DynamicTheme.dark(primary),
+      themeMode: themeMode,
+      // The default 200ms cross-fade lerps the entire ThemeData and rebuilds
+      // the whole tree every frame — the source of the light/dark freeze.
+      // A short, cheap fade instead.
+      themeAnimationDuration: const Duration(milliseconds: 80),
+      themeAnimationCurve: Curves.easeOut,
+      // Arabic-first per plan: `ar` is the default/primary locale, `en` is
+      // the secondary. Flutter derives RTL Directionality from the active
+      // locale automatically (Arabic is a right-to-left script) — verified
+      // below in debug builds rather than left implicit.
+      locale: const Locale('ar'),
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      routerConfig: router,
+      builder: (context, child) {
+        if (kDebugMode) {
+          final direction = Directionality.of(context);
+          assert(
+            direction == TextDirection.rtl,
+            'Expected RTL Directionality for the default `ar` locale, '
+            'got $direction.',
+          );
+        }
+        return CaptureGuard(
+          child: _ConnectivityGate(
+            router: router,
+            child: child ?? const SizedBox.shrink(),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Paths that stay reachable with no connectivity for a logged-out user —
+/// everywhere else [_ConnectivityGate] replaces the whole routed app with
+/// [NoConnectionScreen] (a logged-in student is never blocked, see there). "المحمّلات" and a lecture player both need to work
+/// offline (that's the entire point of `OfflineDownloadManager`/
+/// `LocalRangeServer`); the lecture player itself already knows how to fall
+/// back to an honest "not downloaded" message when there's nothing offline
+/// to play.
+const _offlineCapablePathPrefixes = ['/downloads', '/lectures/'];
+
+/// Replaces the entire routed app with [NoConnectionScreen] whenever
+/// [connectivityStatusProvider] reports no connectivity, so no screen is
+/// reachable while offline — except the paths in
+/// [_offlineCapablePathPrefixes]. Loading/error states fall back to showing
+/// [child] rather than blocking the app on an inconclusive check.
+class _ConnectivityGate extends ConsumerWidget {
+  const _ConnectivityGate({required this.router, required this.child});
+
+  final GoRouter router;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isOnline = ref.watch(connectivityStatusProvider).valueOrNull ?? true;
+    if (isOnline) return child;
+
+    // A logged-in student (or one whose session is still being restored —
+    // that path already falls back to the cached profile offline) always
+    // gets in: cached subjects and downloaded videos work without internet.
+    // Only a confirmed logged-out user is blocked, since login needs the
+    // network.
+    final auth = ref.watch(authControllerProvider);
+    if (auth.isLoading || auth.valueOrNull != null) return child;
+
+    // Read fresh on every rebuild this gate actually runs (driven by
+    // connectivityStatusProvider changing) — covers the common case of
+    // losing connection while already on an offline-capable screen. It
+    // won't re-evaluate on an in-place navigation while already offline
+    // (routeInformationProvider isn't itself watched here), which is an
+    // accepted minor gap rather than restructuring this gate around
+    // GoRouter's own listenable.
+    final location = router.routeInformationProvider.value.uri.path;
+    final isOfflineCapable = _offlineCapablePathPrefixes.any(
+      location.startsWith,
+    );
+    return isOfflineCapable ? child : const NoConnectionScreen();
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "@@locale": "ar",
+  "appTitle": "منصة أونلاين",
+  "@appTitle": {
+    "description": "The application title"
+  },
+  "splashTagline": "تعليم بلا حدود",
+  "login": "تسجيل الدخول",
+  "register": "إنشاء حساب",
+  "logout": "تسجيل الخروج",
+  "fullName": "الاسم الكامل",
+  "mobile": "رقم الموبايل",
+  "password": "كلمة المرور",
+  "confirmPassword": "تأكيد كلمة المرور",
+  "loginButton": "دخول",
+  "registerButton": "إنشاء حساب",
+  "welcomeBack": "مرحباً بعودتك",
+  "loginSubtitle": "سجّل الدخول لمتابعة رحلتك التعليمية",
+  "createAccount": "أنشئ حسابك",
+  "registerSubtitle": "انضم إلى منصة أونلاين وابدأ التعلم",
+  "dontHaveAccount": "ليس لديك حساب؟",
+  "alreadyHaveAccount": "لديك حساب بالفعل؟",
+  "fieldRequired": "هذا الحقل مطلوب",
+  "invalidMobile": "رقم الموبايل غير صالح",
+  "passwordTooShort": "كلمة المرور يجب أن تكون 6 أحرف على الأقل",
+  "passwordsDontMatch": "كلمتا المرور غير متطابقتين",
+  "genericError": "حدث خطأ ما، حاول مرة أخرى",
+  "networkError": "تعذر الاتصال بالخادم، تحقق من الإنترنت",
+  "unauthorizedError": "بيانات الدخول غير صحيحة",
+  "homeWelcome": "أهلاً بك",
+  "homeSubtitle": "سعداء بعودتك إلى منصة أونلاين"
+}
