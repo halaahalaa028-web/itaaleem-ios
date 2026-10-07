@@ -1,4 +1,6 @@
+```dart
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:itaaleem/core/theme/app_colors.dart';
@@ -85,8 +87,6 @@ class AppTheme {
       iconTheme: IconThemeData(color: s.onSurface, size: 24),
       disabledColor: disabledFg,
 
-      // Blends into the page instead of sitting on it as a separate strip;
-      // a soft shadow only appears once content scrolls underneath.
       appBarTheme: AppBarTheme(
         elevation: 0,
         scrolledUnderElevation: 0.5,
@@ -98,7 +98,8 @@ class AppTheme {
         shadowColor: s.shadow.withValues(alpha: isDark ? 0.4 : 0.12),
         systemOverlayStyle: SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
-          statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+          statusBarIconBrightness:
+              isDark ? Brightness.light : Brightness.dark,
           statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
         ),
         titleTextStyle: cairo(18, FontWeight.w700, s.onSurface),
@@ -107,7 +108,6 @@ class AppTheme {
         actionsPadding: const EdgeInsetsDirectional.only(end: 4),
       ),
 
-      // Flat cards: a hairline border instead of a shadow.
       cardTheme: CardThemeData(
         elevation: 0,
         color: s.surface,
@@ -118,9 +118,6 @@ class AppTheme {
         shape: rounded(AppRadius.card, BorderSide(color: hairline)),
       ),
 
-      // Primary CTA. Minimum width stays finite (not double.infinity) so a
-      // button inside a Row never throws; full-width buttons stretch via their
-      // parent (see `AppButton(expand: true)`).
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           disabledBackgroundColor: disabledBg,
@@ -149,24 +146,23 @@ class AppTheme {
       ),
 
       outlinedButtonTheme: OutlinedButtonThemeData(
-        style:
-            OutlinedButton.styleFrom(
-              foregroundColor: s.primary,
-              disabledForegroundColor: disabledFg,
-              minimumSize: const Size.fromHeight(52),
-              padding: buttonPadding,
-              shape: buttonShape,
-              textStyle: buttonText,
-            ).copyWith(
-              side: WidgetStateProperty.resolveWith(
-                (states) => BorderSide(
-                  color: states.contains(WidgetState.disabled)
-                      ? disabledBg
-                      : s.primary,
-                  width: 1.5,
-                ),
-              ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: s.primary,
+          disabledForegroundColor: disabledFg,
+          minimumSize: const Size.fromHeight(52),
+          padding: buttonPadding,
+          shape: buttonShape,
+          textStyle: buttonText,
+        ).copyWith(
+          side: WidgetStateProperty.resolveWith(
+            (states) => BorderSide(
+              color: states.contains(WidgetState.disabled)
+                  ? disabledBg
+                  : s.primary,
+              width: 1.5,
             ),
+          ),
+        ),
       ),
 
       textButtonTheme: TextButtonThemeData(
@@ -224,8 +220,6 @@ class AppTheme {
         suffixIconColor: s.onSurfaceVariant,
       ),
 
-      // The shell uses its own bar (`AppBottomNav`); this keeps any stock
-      // NavigationBar in the same style.
       navigationBarTheme: NavigationBarThemeData(
         height: 68,
         elevation: 0,
@@ -259,14 +253,15 @@ class AppTheme {
         unselectedLabelStyle: cairo(12, FontWeight.w500),
       ),
 
-      // Rounded 3px indicator under the label, the width of the label.
       tabBarTheme: TabBarThemeData(
         labelColor: s.primary,
         unselectedLabelColor: s.onSurfaceVariant,
         indicatorSize: TabBarIndicatorSize.label,
         indicator: UnderlineTabIndicator(
           borderSide: BorderSide(color: s.primary, width: 3),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(3),
+          ),
         ),
         dividerColor: faintLine,
         labelStyle: cairo(14, FontWeight.w700),
@@ -282,7 +277,11 @@ class AppTheme {
         checkmarkColor: s.onPrimaryContainer,
         showCheckmark: false,
         labelStyle: cairo(13, FontWeight.w600, s.onSurface),
-        secondaryLabelStyle: cairo(13, FontWeight.w700, s.onPrimaryContainer),
+        secondaryLabelStyle: cairo(
+          13,
+          FontWeight.w700,
+          s.onPrimaryContainer,
+        ),
         shape: const StadiumBorder(),
         side: WidgetStateBorderSide.resolveWith(
           (states) => states.contains(WidgetState.selected)
@@ -290,7 +289,10 @@ class AppTheme {
               : BorderSide(color: hairline),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        iconTheme: IconThemeData(color: s.onSurfaceVariant, size: 18),
+        iconTheme: IconThemeData(
+          color: s.onSurfaceVariant,
+          size: 18,
+        ),
       ),
 
       segmentedButtonTheme: SegmentedButtonThemeData(
@@ -349,15 +351,24 @@ class AppTheme {
         surfaceTintColor: Colors.transparent,
         elevation: 4,
         shadowColor: s.shadow.withValues(alpha: 0.18),
-        shape: rounded(AppRadius.md, BorderSide(color: faintLine)),
+        shape: rounded(
+          AppRadius.md,
+          BorderSide(color: faintLine),
+        ),
         textStyle: cairo(14, FontWeight.w500, s.onSurface),
       ),
 
       menuTheme: MenuThemeData(
         style: MenuStyle(
-          backgroundColor: WidgetStatePropertyAll(s.surfaceContainerLow),
-          surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
-          shape: WidgetStatePropertyAll(rounded(AppRadius.md)),
+          backgroundColor: WidgetStatePropertyAll(
+            s.surfaceContainerLow,
+          ),
+          surfaceTintColor: const WidgetStatePropertyAll(
+            Colors.transparent,
+          ),
+          shape: WidgetStatePropertyAll(
+            rounded(AppRadius.md),
+          ),
         ),
       ),
 
@@ -379,7 +390,11 @@ class AppTheme {
         behavior: SnackBarBehavior.floating,
         backgroundColor: s.inverseSurface,
         elevation: 2,
-        contentTextStyle: cairo(14, FontWeight.w500, s.onInverseSurface),
+        contentTextStyle: cairo(
+          14,
+          FontWeight.w500,
+          s.onInverseSurface,
+        ),
         actionTextColor: s.inversePrimary,
         shape: rounded(AppRadius.md),
         insetPadding: const EdgeInsets.all(16),
@@ -391,16 +406,31 @@ class AppTheme {
         textStyle: cairo(10, FontWeight.w700),
       ),
 
-      dividerTheme: DividerThemeData(color: faintLine, thickness: 1, space: 1),
+      dividerTheme: DividerThemeData(
+        color: faintLine,
+        thickness: 1,
+        space: 1,
+      ),
 
       listTileTheme: ListTileThemeData(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 2,
+        ),
         minVerticalPadding: 10,
         horizontalTitleGap: 12,
         iconColor: s.onSurfaceVariant,
         shape: rounded(AppRadius.md),
-        titleTextStyle: cairo(15, FontWeight.w600, s.onSurface),
-        subtitleTextStyle: cairo(13, FontWeight.w400, s.onSurfaceVariant),
+        titleTextStyle: cairo(
+          15,
+          FontWeight.w600,
+          s.onSurface,
+        ),
+        subtitleTextStyle: cairo(
+          13,
+          FontWeight.w400,
+          s.onSurfaceVariant,
+        ),
         leadingAndTrailingTextStyle: cairo(
           13,
           FontWeight.w500,
@@ -443,7 +473,11 @@ class AppTheme {
           color: s.inverseSurface,
           borderRadius: BorderRadius.circular(AppRadius.sm),
         ),
-        textStyle: cairo(12, FontWeight.w500, s.onInverseSurface),
+        textStyle: cairo(
+          12,
+          FontWeight.w500,
+          s.onInverseSurface,
+        ),
       ),
 
       // Android: the app's own fade + direction-aware slide (the same one
@@ -490,3 +524,4 @@ class AppButtonStyles {
     ),
   );
 }
+```
